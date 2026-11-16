@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "shortomation",
+  "description": "Shorts aus langen Videos, wortgenau geschnitten und automatisch geprüft. Auf Deutsch.",
+  "owner": {
+    "name": "memo.baut.ki"
+  },
+  "plugins": [
+    {
+      "name": "shortomation",
+      "description": "Aus einem langen Video die besten Momente finden, bewerten, als 9:16-Short mit Hook und Untertiteln rendern und prüfen.",
+      "source": "./",
+      "category": "productivity",
+      "homepage": "https://github.com/memobautki/shortomation"
+    }
+  ]
+}
