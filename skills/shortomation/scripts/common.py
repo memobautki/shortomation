@@ -16,6 +16,7 @@ SR_LEVEL, HOP_LEVEL = 8000, 400  # Pegelmessung: 8 kHz, Fenster 0,05 s
 FIRST_FADE, PIECE_FADE, FINAL_FADE = 0.05, 0.04, 0.06  # Tonblenden der Stücke (s); liegen in Pausen
 # (score.py lässt vor dem ersten Laut mindestens 0,12 s und nach dem letzten mindestens 0,15 s Luft; zwischen
 # Blende und Laut bleibt so ein Ruhefenster, das check.py nachmessen kann)
+LAYOUTS = ("content", "full", "center", "face")  # Bild-Zuschnitte für render.py (Beschreibung dort)
 TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
 
 

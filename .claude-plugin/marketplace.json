@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "shortomation",
-      "description": "Aus einem langen Video die besten Momente finden, bewerten, als 9:16-Short mit Hook und Untertiteln rendern und prüfen.",
+      "description": "Aus einem langen Video die besten Momente finden, bewerten, als 9:16-Short mit Hook und Untertiteln rendern (bei Podcasts mit Sprecher im Bild) und prüfen.",
       "source": "./",
       "category": "productivity",
       "homepage": "https://github.com/memobautki/shortomation"

@@ -79,7 +79,7 @@ class SentenceTests(unittest.TestCase):
         self.assertEqual(wins[-1]["s1"], sents[-1]["id"])
 
     def test_windows_never_skip_a_long_sentence(self):
-        """Codex R13: Satz 10–90 s darf nicht zwischen zwei Fenstern verloren gehen."""
+        """Satz 10–90 s darf nicht zwischen zwei Fenstern verloren gehen."""
         sents = build_sentences(words([("Kurz.", 0, 1), ("Sehr", 10, 50), ("lang.", 50, 90), ("Ende.", 95, 100)]))
         wins = build_windows(sents, win=75, step=35)
         covered = set()
@@ -102,7 +102,7 @@ class SrtAlignTests(unittest.TestCase):
         self.assertFalse(any(w.get("est") for w in out))
 
     def test_unheard_words_are_marked_and_monotone(self):
-        """Codex R01: Überhörte Wörter bekommen keine erfundene „gemessene“ Zeit, sondern est=True."""
+        """Überhörte Wörter bekommen keine erfundene „gemessene“ Zeit, sondern est=True."""
         cues = [{"t0": 0.0, "t1": 9.0, "text": "Bank. Eine Milliarde. Ende."}]
         heard = words([("Bank.", 1.0, 1.5), ("Ende.", 8.0, 8.5)])
         out = align_srt(cues, heard)
@@ -111,7 +111,7 @@ class SrtAlignTests(unittest.TestCase):
         self.assertEqual(times, sorted(times))
 
     def test_different_words_are_not_treated_as_spelling(self):
-        """Codex R01 (Runde 2): „Eine Milliarde“ gegen „Unsinn“ ist keine andere Schreibweise."""
+        """„Eine Milliarde“ gegen „Unsinn“ ist keine andere Schreibweise."""
         times = match_times(["Bank.", "Eine", "Milliarde.", "Ende."],
                             words([("Bank.", 1.0, 1.5), ("Unsinn.", 3.0, 3.5), ("Ende.", 8.0, 8.5)]))
         self.assertIsNone(times[1])
@@ -121,7 +121,7 @@ class SrtAlignTests(unittest.TestCase):
         self.assertEqual([w.get("est", False) for w in out], [False, True, True, False])
 
     def test_false_anchor_is_released(self):
-        """Echter Fall Wirecard: „Ende“ wurde als „Eine“ verhört und hat den Satz davor auf 0 s gequetscht."""
+        """Echter Fall: „Ende“ wurde als „Eine“ verhört und hat den Satz davor auf 0 s gequetscht."""
         cues = [{"t0": 580, "t1": 593, "text": "Bank. Eine Milliarde. Belegt durch Briefe. Ende 2019 wechselt."}]
         heard = words([("Bank.", 584.1, 584.46), ("Eine", 589.95, 590.65), ("2019", 590.65, 591.47),
                        ("wechselt.", 591.5, 592.0)])
@@ -131,13 +131,13 @@ class SrtAlignTests(unittest.TestCase):
         self.assertLess(out["Eine"]["t0"], 586.0)
 
     def test_releasing_anchor_between_gaps_does_not_crash(self):
-        """Codex R01 (Runde 3): Lösen eines Ankers verbindet zwei Lücken."""
+        """Lösen eines Ankers verbindet zwei Lücken."""
         times = [None, (0.05, 0.10), None, (1.0, 1.2)]
         release_weak_anchors(times, 0.0, 2.0)
         self.assertEqual(times[:3], [None, None, None])
 
     def test_number_against_unrelated_word_is_unheard(self):
-        """Codex R02 (Runde 3): „1 Milliarde“ gegen „Unsinn“ ist keine andere Schreibweise."""
+        """„1 Milliarde“ gegen „Unsinn“ ist keine andere Schreibweise."""
         times = match_times(["Bank.", "1", "Milliarde.", "Ende."],
                             words([("Bank.", 1.0, 1.5), ("Unsinn.", 3.0, 3.5), ("Ende.", 8.0, 8.5)]))
         self.assertIsNone(times[1])
@@ -147,7 +147,7 @@ class SrtAlignTests(unittest.TestCase):
         self.assertIsNotNone(ok[1])
 
     def test_unheard_ending_spans_to_end_of_recording(self):
-        """Codex R02 (Runde 2): Ein überhörter letzter Satz liegt zwischen letztem Wort und Aufnahmeende."""
+        """Ein überhörter letzter Satz liegt zwischen letztem Wort und Aufnahmeende."""
         cues = [{"t0": 0, "t1": 6, "text": "Anfang. Schluss hier."}]
         out = align_srt(cues, words([("Anfang.", 1.0, 1.5)]), audio=np.zeros(6 * 16000, np.float32))
         self.assertTrue(out[1]["est"] and out[2]["est"])
@@ -173,7 +173,7 @@ class CutTests(unittest.TestCase):
         self.assertGreaterEqual(cut.air[-1][1], TAIL_MIN - 1e-6)
 
     def test_whisper_over_realistic_background(self):
-        """Codex R02: Raumton -45 dB, Sprache -16 dB, Flüstern -38 dB muss als Laut zählen."""
+        """Raumton -45 dB, Sprache -16 dB, Flüstern -38 dB muss als Laut zählen."""
         sents, idx = sentences([("Es", 1.0, 1.5), ("pleite.", 1.5, 2.0), ("Weiter.", 4.5, 5.0)])
         level = Level(level_curve([(1.0, 2.0, -16), (2.0, 2.5, -38), (4.5, 5.0, -16)], 8.0, floor=-45), HOP)
         cut = cut_part("S000", "S000", sents, idx, level)
@@ -226,7 +226,7 @@ class CutTests(unittest.TestCase):
         self.assertTrue(any("enger Schnitt" in n for n in cut.notes))
 
     def test_onset_without_pause_is_kept_and_reported(self):
-        """Codex R03 (Runde 2): Satz davor endet 1,60, gewählter Satz klingt ab 1,65, Erkennung sagt 1,90."""
+        """Satz davor endet 1,60, gewählter Satz klingt ab 1,65, Erkennung sagt 1,90."""
         sents, idx = sentences([("Davor.", 1.0, 1.6), ("Jetzt", 1.9, 2.3), ("los.", 2.3, 2.8), ("Weiter.", 5.0, 5.5)])
         level = Level(level_curve([(1.0, 1.6, -15), (1.65, 2.8, -15), (5.0, 5.5, -15)], 7.0), HOP)
         cut = cut_part("S001", "S001", sents, idx, level)
@@ -240,7 +240,7 @@ class CutTests(unittest.TestCase):
         self.assertGreaterEqual(cut.air[0][0], LEAD_MIN - 1e-6)
 
     def test_end_never_beyond_media(self):
-        """Codex R04 (Runde 1) und R03 (Runde 3): Ton läuft bis zum Dateiende; nichts davon geht verloren."""
+        """Ton läuft bis zum Dateiende; nichts davon geht verloren."""
         sents, idx = sentences([("Schluss.", 1.0, 1.9)])
         level = Level(level_curve([(1.0, 2.05, -15)], 2.05), HOP, duration=2.049)
         cut = cut_part("S000", "S000", sents, idx, level)
@@ -279,7 +279,7 @@ class ValidateTests(unittest.TestCase):
 
 class OverlapTests(unittest.TestCase):
     def test_overlap_only_against_renderable_clips(self):
-        """Codex R12: Ein Clip mit Content-ID darf einen sauberen Nachbarn nicht ausschließen."""
+        """Ein Clip mit Content-ID darf einen sauberen Nachbarn nicht ausschließen."""
         sents, _ = sentences([(f"Satz{i}.", i * 2.0 + 1, i * 2.0 + 2) for i in range(6)])
         an = {"rms_db": level_curve([(i * 2.0 + 1, i * 2.0 + 2, -15) for i in range(6)], 14.0), "hop_s": HOP,
               "motion": [1.0] * 140, "motion_fps": 10, "cuts": []}
@@ -293,7 +293,7 @@ class OverlapTests(unittest.TestCase):
 
 class LevelTests(unittest.TestCase):
     def test_partial_last_window_counts(self):
-        """Codex R05 (Runde 2): Die letzten 49 ms dürfen nicht verschwinden."""
+        """Die letzten 49 ms dürfen nicht verschwinden."""
         audio = np.full(16000 + 392, 0.1, np.float32)  # 2,049 s bei 8 kHz mit Fenster 400
         self.assertEqual(len(level_db(audio, 400)), 41)
         level = Level([-20.0] * 41, HOP, duration=2.049)
@@ -309,7 +309,7 @@ class CheckEdgeTests(unittest.TestCase):
             "piece_sents": [["S000"], ["S001"]]}
 
     def test_unmeasurable_boundary_is_reported(self):
-        """Codex R04 (Runde 2): Ohne messbare Pause darf eine Grenze nicht still als sauber gelten."""
+        """Ohne messbare Pause darf eine Grenze nicht still als sauber gelten."""
         db = np.full(400, -60.0)
         errors, unchecked = edge_report(db, 0.01, self.clip)
         self.assertEqual(errors, [])
@@ -341,13 +341,13 @@ class CheckEdgeTests(unittest.TestCase):
         self.assertEqual(len(edge_report(db, 0.01, clip, vad)[0]), 1)
 
     def test_all_uncertainty_notes_are_recognized(self):
-        """Codex R04 (Runde 3): jede Unsicherheit aus score.py führt zu „prüfen“."""
+        """jede Unsicherheit aus score.py führt zu „prüfen“."""
         flags = ["Wortzeiten in S001 geschätzt", "Anfang von S002 nicht sicher gemessen",
                  "Ende von S003 nicht sicher gemessen", "enger Schnitt nach S004 (0.00 s Pause)", "⚖ prüfen"]
         self.assertEqual(len(unsure_flags({"flags": flags})), 4)
 
     def test_old_metadata_is_rejected(self):
-        """Codex R06 (Runde 2)."""
+        """Metadaten im alten Format werden mit klarer Meldung abgelehnt."""
         with self.assertRaises(StepError):
             require_metadata({"id": "k01", "cut": [[0, 1], [2, 3]], "air": [[0.2, 0.2]] * 2, "piece_sents": [["S0"]]})
         require_metadata(self.clip)
@@ -365,7 +365,7 @@ class FakeModel:
 
 class CheckWordTests(unittest.TestCase):
     def test_missing_one_word_sentence_is_detected(self):
-        """Codex R07 (Runde 2): Ein fehlender Ein-Wort-Satz („Nein.“) muss auffallen."""
+        """Ein fehlender Ein-Wort-Satz („Nein.“) muss auffallen."""
         by_id = {s["id"]: s for s in build_sentences(words([("Einleitung.", 0.2, 0.8), ("Nein.", 1.0, 1.3),
                                                              ("Schluss.", 1.5, 2.0)]))}
         clip = {"id": "k01", "speed": 1.0, "cut": [[0.0, 2.3]], "air": [[0.2, 0.3]],
@@ -385,7 +385,7 @@ class CheckWordTests(unittest.TestCase):
         self.assertEqual(complete, [])
 
     def test_missing_sentence_not_covered_by_neighbour(self):
-        """Codex R05 (Runde 3): „nein“ aus dem Satz davor darf den fehlenden Satz „Nein.“ nicht abdecken."""
+        """„nein“ aus dem Satz davor darf den fehlenden Satz „Nein.“ nicht abdecken."""
         by_id = {s["id"]: s for s in build_sentences(words([("Er", 0.1, 0.3), ("sagt", 0.3, 0.5), ("nein.", 0.5, 0.8),
                                                              ("Nein.", 1.0, 1.3), ("Schluss.", 1.5, 2.0)]))}
         clip = {"id": "k01", "speed": 1.0, "cut": [[0.0, 2.3]], "air": [[0.1, 0.3]],
@@ -406,18 +406,18 @@ class CheckWordTests(unittest.TestCase):
         self.assertEqual(edge_word(["Er", "sagt", "NEIN."], last=True), ("nein", False))
 
     def test_cut_last_word_is_detected(self):
-        self.assertFalse(heard_near("pleite", ["ist", "wirecard", "schon", "pleit"], last=True))
-        self.assertTrue(heard_near("pleite", ["ist", "wirecard", "schon", "pleite"], last=True))
+        self.assertFalse(heard_near("pleite", ["ist", "firma", "schon", "pleit"], last=True))
+        self.assertTrue(heard_near("pleite", ["ist", "firma", "schon", "pleite"], last=True))
 
     def test_compound_and_numbers(self):
-        self.assertTrue(heard_near("wirecardaktie", ["der", "wirecard", "aktie"], last=True))
+        self.assertTrue(heard_near("firmenaktie", ["der", "firmen", "aktie"], last=True))
         self.assertEqual(edge_word(["Am", "3.", "September", "2020."], last=True), ("2020", True))
         self.assertEqual(edge_word(["…"], last=True), ("", False))
 
 
 class StyleTests(unittest.TestCase):
     def test_valid_and_invalid_styles(self):
-        """Codex R08 (Runde 2): kaputte Stilangaben -> klare Meldung statt Traceback."""
+        """kaputte Stilangaben -> klare Meldung statt Traceback."""
         self.assertEqual(validate_style({"accent": "#FFC83D"})["accent"], "#FFC83D")
         for bad in ({"fonts": {"hook": None}}, {"panel_top": "520"}, {"accent": "gelb"}, {"fonts": "x.ttf"},
                     {"unbekannt": 1}, {"ignore_edges": [0.1]}, {"accent_pattern": "("}, [], {"cap_size": True}):
@@ -425,7 +425,7 @@ class StyleTests(unittest.TestCase):
                 validate_style(bad)
 
     def test_broken_font_file_is_reported(self):
-        """Codex R08 (Runde 3)."""
+        """Eine kaputte Schriftdatei wird vor dem Rendern gemeldet."""
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "kaputt.ttf").write_bytes(b"keine Schrift")
@@ -437,7 +437,7 @@ class StyleTests(unittest.TestCase):
 
 class ClipTextTests(unittest.TestCase):
     def test_label_must_be_text(self):
-        """Codex R07 (Runde 3)."""
+        """Das Feld label muss Text sein."""
         with self.assertRaises(StepError):
             validate({"video": "x.mp4", "clips": [{"id": "k01", "hook": "H", "label": None, "parts": [["S000", "S000"]],
                                                    "rubric": RUBRIC}]})
@@ -447,11 +447,11 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class Round4Tests(unittest.TestCase):
-    """Befunde aus Claudex Runde 4."""
+class EdgeCaseTests(unittest.TestCase):
+    """Flüstern, Musikbett, Zahlwörter und Abkürzungen an den Schnitten."""
 
     def test_whisper_with_low_vad_confidence_is_kept(self):
-        """R01: Raumton −45, Flüstern −38 bis 2,5 s, Silero nur 0,1: Energie zählt, das Ende bleibt drin."""
+        """Raumton −45, Flüstern −38 bis 2,5 s, Silero nur 0,1: Energie zählt, das Ende bleibt drin."""
         sents, idx = sentences([("Es", 1.0, 1.5), ("pleite.", 1.5, 2.0), ("Weiter.", 4.5, 5.0)])
         db = level_curve([(1.0, 2.0, -16), (2.0, 2.5, -38), (4.5, 5.0, -16)], 8.0, floor=-45)
         prob = [0.9 if 1.0 <= i * HOP < 2.0 or 4.5 <= i * HOP < 5.0 else 0.1 for i in range(len(db))]
@@ -459,7 +459,7 @@ class Round4Tests(unittest.TestCase):
         self.assertGreaterEqual(cut.pieces[-1][1], 2.5 + TAIL_MIN - 1e-6)
 
     def test_speech_at_cut_fails_even_under_loud_music(self):
-        """R02: Musikbett −22 dB, Sprache −18 dB mit Silero 0,95 direkt am Schnitt = Fehler."""
+        """Musikbett −22 dB, Sprache −18 dB mit Silero 0,95 direkt am Schnitt = Fehler."""
         clip = {"id": "k01", "speed": 1.0, "cut": [[0.0, 2.0]], "air": [[0.2, 0.4]], "piece_sents": [["S000"]]}
         db = np.full(200, -22.0)
         db[30:150] = -12.0
@@ -470,13 +470,13 @@ class Round4Tests(unittest.TestCase):
         self.assertEqual(len(edge_report(db, 0.01, clip, vad)[0]), 1)
 
     def test_unrelated_words_are_not_numbers(self):
-        """R06: „keine“ ist kein Zahlwort."""
+        """„keine“ ist kein Zahlwort."""
         times = match_times(["Bank.", "1", "Milliarde.", "Ende."],
                             words([("Bank.", 1.0, 1.5), ("Keine.", 3.0, 3.5), ("Ende.", 8.0, 8.5)]))
         self.assertIsNone(times[1])
 
     def test_unrelated_replacement_is_a_missing_sentence(self):
-        """R07: „Eine Milliarde“ gegen gehörtes „Unsinn“ = Satz fehlt."""
+        """„Eine Milliarde“ gegen gehörtes „Unsinn“ = Satz fehlt."""
         by_id = {s["id"]: s for s in build_sentences(words([("Start.", 0.1, 0.5), ("Eine", 0.8, 1.0),
                                                              ("Milliarde.", 1.0, 1.5), ("Ende.", 1.8, 2.2)]))}
         clip = {"id": "k01", "speed": 1.0, "cut": [[0.0, 2.4]], "air": [[0.1, 0.2]],
@@ -492,7 +492,7 @@ class Round4Tests(unittest.TestCase):
         self.assertTrue(any("S001" in e for e in errors))
 
     def test_acronym_at_edge_is_reviewed(self):
-        """R08: fehlt die Abkürzung am Ende, ist das „anhören“ statt still bestanden."""
+        """fehlt die Abkürzung am Ende, ist das „anhören“ statt still bestanden."""
         by_id = {s["id"]: s for s in build_sentences(words([("Das", 0.1, 0.3), ("sagt", 0.3, 0.6), ("BPI.", 0.6, 1.0)]))}
         clip = {"id": "k01", "speed": 1.0, "cut": [[0.0, 1.2]], "air": [[0.1, 0.2]], "piece_sents": [["S000"]]}
         import check

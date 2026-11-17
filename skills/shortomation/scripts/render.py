@@ -1,18 +1,21 @@
 """Rendert Clips aus clips.scored.json als Hochkant-Short 1080x1920 (Schritt 6).
 
-    python -I render.py --dir <ordner> [--ids k01,k04 | --top 5] [--layout content|full|center] [--keep]
+    python -I render.py --dir <ordner> [--ids k01,k04 | --top 5] [--layout content|full|center|face] [--keep]
 
 Aufbau: oben Reihe und Hook, Mitte das Bild, unten große Untertitel im Takt der gemessenen Wörter.
 Bild-Zuschnitt (--layout oder "layout" in clips.json):
   content  folgt dem hellen Inhalt auf dunklem Grund (Tafeln, Dokumente, Folien), je Einstellung neu
   full     ganzes Bild, nichts abgeschnitten
   center   füllt die Bildfläche, schneidet links und rechts ab (gut für eine Person in der Mitte)
+  face     folgt dem Gesicht; bei mehreren Personen der, die spricht (Podcast, Interview); ohne Gesicht wie content
 Ton aus dem Original, Stücke mit kurzen Blenden in Pausen, Tempo nach "speed", Lautheit -14 LUFS.
-Schreibt <ordner>/out/<id>.mp4 und <id>_cover.jpg. Braucht ffmpeg, numpy, Pillow.
+Schreibt <ordner>/out/<id>.mp4 und <id>_cover.jpg. Braucht ffmpeg, numpy, Pillow (für face auch onnxruntime,
+das mit faster-whisper kommt).
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import subprocess
@@ -20,18 +23,20 @@ import sys
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from typing import Callable, Sequence
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I lässt den Skriptordner weg
-from common import FINAL_FADE, FIRST_FADE, PIECE_FADE, StepError, VideoInfo, probe, read_json, run, setup_console
+from common import (FINAL_FADE, FIRST_FADE, LAYOUTS, PIECE_FADE, StepError, VideoInfo, probe, read_json, run,
+                    setup_console)
+from faces import SPEECH, face_crops
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 FONT_DIR = SKILL_DIR / "assets" / "fonts"
 OW, OH, FPS = 1080, 1920, 30
 WORK_MAX_W, WORK_MAX_H = 1920, 1080   # Arbeitsgröße des Quellbilds (größere Quellen werden verkleinert)
-LAYOUTS = ("content", "full", "center")
 
 STYLE = {
     "bg": "#0B0C0E", "text": "#ECEAE4", "dim": "#8A8E93", "accent": "#FF4A2E",
@@ -47,6 +52,8 @@ STYLE = {
 CONTENT_L, PAD = 70, 72            # Inhalt = heller als CONTENT_L; Rand um den Inhalt in px (Arbeitsgröße)
 MASS_CUT, FULL_AREA, MAX_ZOOM = 0.004, 0.72, 1.7
 CAP_MAX_CHARS, CAP_MAX_WORDS, CAP_HOLD = 20, 4, 0.25
+TARGET_I, TARGET_TP = -14.0, -1.5  # Lautheit (LUFS) und Spitzen (dBTP) der fertigen Shorts
+VOICE_COMP = "acompressor=threshold=0.03:ratio=6:attack=3:release=100"  # nur für sehr dynamische Aufnahmen
 
 
 COLOR_KEYS = ("bg", "text", "dim", "accent")
@@ -238,10 +245,16 @@ def caption_chunks(sents: list[dict]) -> list[dict]:
 
 # ---------- Zuschnitt ----------
 
-def shot_crops(src: str, pieces: list[list[float]], cuts: list[float], st: dict, layout: str, ww: int, wh: int
+def shot_crops(src: str, pieces: list[list[float]], cuts: list[float], st: dict, layout: str, ww: int, wh: int,
+               speaking: Callable[[float], bool] = lambda t: True, starts: Sequence[float] = ()
                ) -> list[tuple[float, float, tuple[float, float, float, float]]]:
-    """Je Einstellung (zwischen harten Schnitten) ein Ausschnitt (x, y, w, h) in Pixeln der Arbeitsgröße."""
+    """Je Einstellung (zwischen harten Schnitten) ein Ausschnitt (x, y, w, h) in Pixeln der Arbeitsgröße; bei „face“
+    zusätzlich je Sprecherwechsel (speaking: wird bei Sekunde t gesprochen, starts: Satzanfänge)."""
     panel_h = st["panel_bottom"] - st["panel_top"]
+    if layout == "face":
+        aspect = OW / panel_h
+        return face_crops(src, pieces, cuts, ww, wh, aspect, speaking, starts,
+                          lambda frames, scale: content_box(frames, scale, ww, wh, aspect, st))
     crops = []
     for a, b in pieces:
         bounds = [a] + [c for c in cuts if a + 0.05 < c < b - 0.05] + [b]
@@ -400,11 +413,38 @@ def build_audio(clip: dict, src: str, tmp: Path) -> tuple[Path, float]:
         labels.append(f"[a{i}]")
     speed = float(clip.get("speed", 1.0))
     total = sum(b - a for a, b in clip["cut"]) / speed
-    chain = (";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1,atempo={speed},"
-             f"loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[out]")
+    pre = ";".join(parts) + f";{''.join(labels)}concat=n={len(labels)}:v=0:a=1,atempo={speed}"
+    # Sehr dynamische Aufnahmen (leise Podcasts, Spitzen weit über dem Mittel) erreichen −14 LUFS bei −1,5 dBTP nur
+    # mit leichter Kompression; alles andere bleibt unverändert.
+    level = measure_loudness(src, pre)
+    comp = f"{VOICE_COMP}," if level and level[1] - level[0] > TARGET_TP - TARGET_I else ""
+    chain = pre + f",{comp}loudnorm=I={TARGET_I}:TP={TARGET_TP}:LRA=11,aresample=48000[out]"
     out = tmp / "audio.wav"
     run(["ffmpeg", "-v", "error", "-y", "-i", src, "-filter_complex", chain, "-map", "[out]", "-ac", "2", str(out)])
     return out, total
+
+
+def measure_loudness(src: str, pre: str) -> tuple[float, float] | None:
+    """(Lautheit LUFS, True Peak dBTP) des geschnittenen Tons vor dem Normieren; None, wenn nicht messbar (Stille)."""
+    res = run(["ffmpeg", "-hide_banner", "-nostats", "-i", src, "-filter_complex",
+               pre + f",loudnorm=I={TARGET_I}:TP={TARGET_TP}:print_format=json[m]", "-map", "[m]", "-f", "null", "-"])
+    match = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", res.stderr.decode("utf-8", "replace"))
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(0))
+        values = float(data["input_i"]), float(data["input_tp"])
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+    return values if all(np.isfinite(values)) else None
+
+
+def speech_at(an: dict) -> Callable[[float], bool]:
+    """Wird bei Sekunde t gesprochen? Aus der Sprachwahrscheinlichkeit in analysis.json; ohne sie immer ja."""
+    prob, hop = an.get("speech_prob"), an.get("hop_s")
+    if not prob or not hop:
+        return lambda t: True
+    return lambda t: prob[min(len(prob) - 1, max(0, int(t / hop)))] >= SPEECH
 
 
 def render_clip(clip: dict, cj: dict, sents: list[dict], an: dict, d: Path, args: argparse.Namespace) -> Path:
@@ -429,7 +469,7 @@ def render_clip(clip: dict, cj: dict, sents: list[dict], an: dict, d: Path, args
     try:
         base = base_layer(clip, cj, st, fonts)
         caps = [caption_layer(c["words"], st, fonts) for c in chunks]
-        crops = shot_crops(src, clip["cut"], an["cuts"], st, layout, ww, wh)
+        crops = shot_crops(src, clip["cut"], an["cuts"], st, layout, ww, wh, speech_at(an), [s["t0"] for s in in_clip])
         video, _ = compose_video(clip, src, crops, chunks, base, caps, st, ww, wh, tmp)
         audio, total = build_audio(clip, src, tmp)
         speed = float(clip.get("speed", 1.0))

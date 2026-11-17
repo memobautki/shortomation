@@ -9,6 +9,7 @@ Schreibt <ordner>/analysis.json:
   rms_db    Pegel des Tons je hop_s Sekunden (dBFS, Mono 8 kHz; das letzte Fenster kann kürzer sein)
   audio_duration  genaue Länge der Tonspur (s)
   speech_prob     Sprachwahrscheinlichkeit je hop_s (Silero-VAD; trennt Sprache von Hintergrundmusik)
+  faces     Stichprobe aus 12 Bildern: {samples, with_face, max_faces} (für die Wahl des Zuschnitts „face“)
 Liest nur, verändert das Video nicht.
 """
 from __future__ import annotations
@@ -23,6 +24,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I lässt den Skriptordner weg
 from common import (HOP_LEVEL, SR_LEVEL, StepError, level_db, load_audio, probe, setup_console, speech_probability,
                     write_json)
+from faces import face_census
 
 W, H, FPS = 160, 90, 10
 CUT_MIN, CUT_FACTOR, CUT_GAP = 6.0, 4.0, 0.4  # harter Schnitt: Sprung > max(CUT_MIN, CUT_FACTOR × lokaler Median)
@@ -83,10 +85,17 @@ def main() -> None:
            "rms_db": [round(float(v), 1) for v in rms]}
     if prob is not None:
         res["speech_prob"] = [round(float(v), 2) for v in prob[:len(rms)]]
+    try:
+        res["faces"] = face_census(str(video), info)
+    except StepError as exc:  # ohne onnxruntime oder Modell: alles andere geht trotzdem
+        res["faces"] = None
+        print(f"Hinweis: Gesichter nicht geprüft ({exc}).", file=sys.stderr)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     write_json(out / "analysis.json", res, indent=None)
-    print(f"{info.width}x{info.height}, {info.fps:.2f} fps, {info.duration:.0f} s, {len(res['cuts'])} Schnitte "
+    faces = res["faces"]
+    seen = f", Personen in {faces['with_face']} von {faces['samples']} Proben" if faces else ""
+    print(f"{info.width}x{info.height}, {info.fps:.2f} fps, {info.duration:.0f} s, {len(res['cuts'])} Schnitte{seen} "
           f"-> {out / 'analysis.json'}")
 
 

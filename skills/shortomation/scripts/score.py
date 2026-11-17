@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # python -I lässt den Skriptordner weg
-from common import StepError, read_json, setup_console, write_json
+from common import LAYOUTS, StepError, read_json, setup_console, write_json
 
 RUBRIC_W = {"hook": .25, "standalone": .20, "payoff": .15, "stakes": .15, "surprise": .15, "comment": .10}
 MEASURE_W = {"len": .2, "pace": .2, "gap": .15, "visual": .15, "still": .1, "start": .2}
@@ -338,8 +338,8 @@ def validate(cj: object) -> None:
         for key in ("label", "title", "why"):
             if key in c and not isinstance(c[key], str):
                 raise StepError(f"{cid}: „{key}“ muss Text sein, gefunden: {c[key]!r}")
-        if "layout" in c and c["layout"] not in ("content", "full", "center"):
-            raise StepError(f"{cid}: layout {c['layout']!r} unbekannt, erlaubt: content, full, center")
+        if "layout" in c and c["layout"] not in LAYOUTS:
+            raise StepError(f"{cid}: layout {c['layout']!r} unbekannt, erlaubt: {', '.join(LAYOUTS)}")
         if "tighten" in c and not isinstance(c["tighten"], bool):
             raise StepError(f"{cid}: „tighten“ muss true oder false sein.")
         parts = c.get("parts")

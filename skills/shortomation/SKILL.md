@@ -3,10 +3,11 @@ name: shortomation
 description: >-
   Macht aus einem langen Video mit Sprache (Doku, Erklärvideo, Podcast, Vortrag, Interview) fertige Hochkant-Shorts.
   Findet die Momente mit dem größten Short-Potenzial, gibt jedem einen Viralitätswert aus Inhaltsraster und Messung,
-  schneidet wortgenau (kein angeschnittenes letztes Wort), setzt Hook-Titel und Untertitel im Takt der Wörter und
-  prüft jeden Short automatisch. Warnt vor Content-ID-Musik, Bildnachweisen und heiklen Vorwürfen. Nutze ihn bei
-  „Shorts aus meinem Video“, „Clips schneiden“, „die besten Stellen finden“, „Viralitätswert“, „Reels aus der
-  Folge“, „aus dem langen Video Shorts machen“. Läuft lokal, lädt das Video nirgends hoch.
+  schneidet wortgenau (kein angeschnittenes letztes Wort), folgt bei Podcasts und Interviews der Person, die gerade
+  spricht, setzt Hook-Titel und Untertitel im Takt der Wörter und prüft jeden Short automatisch. Warnt vor
+  Content-ID-Musik, Bildnachweisen und heiklen Vorwürfen. Nutze ihn bei „Shorts aus meinem Video“, „Clips
+  schneiden“, „Podcast-Clips“, „die besten Stellen finden“, „Viralitätswert“, „Reels aus der Folge“, „aus dem
+  langen Video Shorts machen“. Läuft lokal, lädt das Video nirgends hoch.
 argument-hint: "[Pfad zum Video] [optional: Pfad zur SRT]"
 ---
 
@@ -38,7 +39,8 @@ Aus einem langen Video werden 3 bis 10 fertige Shorts (1080x1920, 30 fps, −14 
 
 Unten steht `PY` für das Python dieser Umgebung (`<skill>/.venv/Scripts/python.exe` bzw. `<skill>/.venv/bin/python`),
 `S` für `<skill>/scripts` und `D` für den Arbeitsordner, zum Beispiel `<videoordner>/shorts`. Rufe Python immer mit
-`-I` auf. Prüfe vor dem Start: `PY -I -c "import numpy, PIL, faster_whisper"`.
+`-I` auf. Prüfe vor dem Start: `PY -I -c "import numpy, PIL, faster_whisper, onnxruntime"` (onnxruntime kommt mit
+faster-whisper und wird für den Zuschnitt `face` gebraucht).
 
 ## Ablauf
 
@@ -61,13 +63,15 @@ PY -I S/windows.py --dir D
 
 Schreibt `D/transcript.md` (Sätze `S000…` mit gemessenen Zeiten, Fenster `W00…` von etwa 75 s).
 
-**3. Messen** (Schnitte, Bewegung, Pegel und Sprachwahrscheinlichkeit; etwa 3 min für 25 min Video). Die
+**3. Messen** (Schnitte, Bewegung, Pegel, Sprachwahrscheinlichkeit, Gesichter; etwa 3 min für 25 min Video). Die
 Sprachwahrscheinlichkeit (Silero-VAD aus faster-whisper) trennt Sprache von Hintergrundmusik, damit Schnitte auch
 bei Musik unter der Stimme hinter dem letzten Wort liegen.
 
 ```
 PY -I S/analyze.py <video> --out D
 ```
+
+Die Ausgabe nennt, in wie vielen von 12 Stichproben eine Person zu sehen ist (`faces` in `analysis.json`).
 
 **4. Bewerten und auswählen (du, nach `references/rubric.md`)**
 
@@ -76,7 +80,11 @@ PY -I S/analyze.py <video> --out D
 - Schreibe `D/clips.json` (Felder und Beispiel in `references/rubric.md`):
   - `video` (Pfad relativ zu D), `channel`, `cta`, `clips`
   - optional `speed` (Standard 1,0; ruhige Sprecher vertragen 1,1), `tighten` (Pausen kürzen, Standard an),
-    `layout` (`content`, `full` oder `center`, siehe Schritt 6), `style` (eigene Farben und Schriften)
+    `layout` (`content`, `full`, `center` oder `face`, siehe Schritt 6), `style` (eigene Farben und Schriften)
+  - **Zuschnitt wählen:** Ist laut `analysis.json` in mindestens der Hälfte der Stichproben eine Person zu sehen
+    (`faces.with_face >= faces.samples / 2`, also Podcast, Interview, Vlog, Vortrag), setze `"layout": "face"`.
+    Sonst bleibt `content`. Wechselt das Video zwischen Personen und Dokumenten, geht `face` auch: Einstellungen
+    ohne Gesicht werden wie `content` geschnitten.
   - `claimed`: Bereiche `[[Start, Ende]]` in Sekunden, für die YouTube Content-ID-Ansprüche gemeldet hat (aus
     YouTube Studio, Reiter Urheberrecht). Frag den Nutzer danach, wenn das Video schon online ist.
   - `attribution`: `[[Start, Ende, "Nachweis"]]` für Material mit Namensnennungspflicht (CC BY).
@@ -104,12 +112,16 @@ Nach Änderungen an `clips.json` diesen Schritt neu laufen lassen.
 **6. Rendern** (etwa 2 bis 3 min je 30-s-Short)
 
 ```
-PY -I S/render.py --dir D [--ids k01,k04 | --top 5] [--layout content|full|center]
+PY -I S/render.py --dir D [--ids k01,k04 | --top 5] [--layout content|full|center|face]
 ```
 
 - `content`: folgt dem hellen Inhalt auf dunklem Grund (Tafeln, Dokumente, Folien). Für Dokus.
 - `full`: ganzes Bild, nichts abgeschnitten. Für alles, wo kein Rand fehlen darf.
 - `center`: füllt die Fläche und schneidet links und rechts ab. Für eine Person in der Bildmitte.
+- `face`: folgt dem Gesicht. Sitzen mehrere Personen im Bild, zeigt es die, die gerade spricht (erkannt an der
+  Mundbewegung, Wechsel als harter Schnitt am Satzanfang, frühestens nach 1,5 s), und lässt die anderen aus dem
+  Bild. Für Podcasts, Interviews, Vlogs. Gesichter werden nur gefunden, nicht erkannt: Der Skill weiß nicht, wer
+  die Person ist.
 - Ohne `--ids` werden die besten `--top` gerendert, ohne Clips mit Content-ID- oder Überlappungs-Warnung.
 
 **7. Prüfen, bevor du es dem Nutzer gibst**
@@ -125,7 +137,9 @@ Befund lesen, `clips.json` anpassen (Bereich, `tighten`), Schritte 5 bis 7 wiede
 
 Sieh dir außerdem je Short einen Kontaktabzug an:
 `ffmpeg -v error -i D/out/<id>.mp4 -vf "fps=1/3,scale=360:640,tile=5x2" -frames:v 1 D/out/<id>_sheet.jpg`.
-Keine Tafel angeschnitten, Hook passt, Untertitel lesbar.
+Keine Tafel angeschnitten, Hook passt, Untertitel lesbar. Bei `face`: Im Bild ist jeweils die Person, die den
+Untertitel spricht. Springt das Bild zur falschen Person (Profil, Hand vor dem Mund, beide reden gleichzeitig),
+den Clip mit `"layout": "full"` neu rendern.
 
 ## Ausgabe für den Nutzer
 

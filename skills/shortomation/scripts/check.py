@@ -145,7 +145,7 @@ COMMON_CAPS = {"nein", "ja", "und", "oder", "aber", "doch", "nie", "nur", "hier"
 
 
 def heard_near(word: str, heard: list[str], last: bool) -> bool:
-    """Ist word am Rand der erkannten Wörter zu hören? Auch zusammengesetzt („Wirecard-Aktie“ = „Wirecard Aktie“)."""
+    """Ist word am Rand der erkannten Wörter zu hören? Auch zusammengesetzt („Firmen-Aktie“ = „Firmen Aktie“)."""
     if not word:
         return True
     edge = heard[-EDGE_WORDS:] if last else heard[:EDGE_WORDS]

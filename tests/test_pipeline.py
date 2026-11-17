@@ -152,13 +152,15 @@ class SyncTest(unittest.TestCase):
                                       encoding="utf-8")
         PipelineTest.py(SCRIPTS / "windows.py", "--dir", d)
         PipelineTest.py(SCRIPTS / "analyze.py", d / "film.mp4", "--out", d)
+        rubric = {"hook": 8, "standalone": 8, "payoff": 7, "stakes": 6, "surprise": 7, "comment": 6}
+        parts = [["S000", f"S{cls.BURSTS - 1:03d}"]]
+        # s02 wie s01, aber mit Zuschnitt „face“: ohne Gesicht im Bild gilt „content“, der Takt bleibt gleich
         clips = {"video": "film.mp4", "speed": 1.1,
-                 "clips": [{"id": "s01", "hook": "Synchron", "parts": [["S000", f"S{cls.BURSTS - 1:03d}"]],
-                            "rubric": {"hook": 8, "standalone": 8, "payoff": 7, "stakes": 6, "surprise": 7,
-                                       "comment": 6}}]}
+                 "clips": [{"id": "s01", "hook": "Synchron", "parts": parts, "rubric": rubric},
+                           {"id": "s02", "hook": "Synchron", "parts": parts, "rubric": rubric, "layout": "face"}]}
         (d / "clips.json").write_text(json.dumps(clips), encoding="utf-8")
         PipelineTest.py(SCRIPTS / "score.py", "--dir", d)
-        PipelineTest.py(SCRIPTS / "render.py", "--dir", d, "--ids", "s01", "--layout", "full")
+        PipelineTest.py(SCRIPTS / "render.py", "--dir", d, "--ids", "s01,s02", "--layout", "full")
 
     @classmethod
     def tearDownClass(cls):
@@ -169,20 +171,22 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(len(clip["cut"]), self.BURSTS)
 
     def test_picture_and_sound_stay_in_sync(self):
-        out = self.tmp / "out" / "s01.mp4"
-        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(out), "-vf", "crop=200:200:440:860,scale=1:1",
-                              "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
-        bright = np.frombuffer(raw, np.uint8).astype(np.float32)
-        audio = load_audio(out, 30 * 100)  # 100 Abtastwerte je Bild bei 30 fps
-        n = min(len(bright), len(audio) // 100)
-        loud = np.sqrt((audio[:n * 100].reshape(n, 100) ** 2).mean(axis=1)) > 0.05
-        lit = bright[:n] > 128
-        v_on = [i for i in range(1, n) if lit[i] and not lit[i - 1]]
-        a_on = [i for i in range(1, n) if loud[i] and not loud[i - 1]]
-        self.assertEqual(len(v_on), self.BURSTS, f"Bild-Einsätze {v_on}")
-        self.assertEqual(len(a_on), self.BURSTS, f"Ton-Einsätze {a_on}")
-        for v, a in zip(v_on, a_on):
-            self.assertLessEqual(abs(v - a), 1, f"Bild bei Bild {v}, Ton bei Bild {a}")
+        for cid in ("s01", "s02"):
+            with self.subTest(clip=cid):
+                out = self.tmp / "out" / f"{cid}.mp4"
+                raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(out), "-vf", "crop=200:200:440:860,scale=1:1",
+                                      "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True, check=True).stdout
+                bright = np.frombuffer(raw, np.uint8).astype(np.float32)
+                audio = load_audio(out, 30 * 100)  # 100 Abtastwerte je Bild bei 30 fps
+                n = min(len(bright), len(audio) // 100)
+                loud = np.sqrt((audio[:n * 100].reshape(n, 100) ** 2).mean(axis=1)) > 0.05
+                lit = bright[:n] > 128
+                v_on = [i for i in range(1, n) if lit[i] and not lit[i - 1]]
+                a_on = [i for i in range(1, n) if loud[i] and not loud[i - 1]]
+                self.assertEqual(len(v_on), self.BURSTS, f"Bild-Einsätze {v_on}")
+                self.assertEqual(len(a_on), self.BURSTS, f"Ton-Einsätze {a_on}")
+                for v, a in zip(v_on, a_on):
+                    self.assertLessEqual(abs(v - a), 1, f"Bild bei Bild {v}, Ton bei Bild {a}")
 
     def test_check_passes(self):
         stdout = PipelineTest.py(SCRIPTS / "check.py", "--dir", self.tmp)
@@ -191,7 +195,7 @@ class SyncTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg fehlt")
 class DelayedAudioTest(unittest.TestCase):
-    """Codex R06 (Runde 3): Beginnt die Tonspur später als das Bild, muss Sekunde t überall dieselbe Stelle sein."""
+    """Beginnt die Tonspur später als das Bild, muss Sekunde t überall dieselbe Stelle sein."""
 
     def test_audio_is_on_video_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -210,13 +214,9 @@ class DelayedAudioTest(unittest.TestCase):
             self.assertGreater(float(db[45:75].mean()), -25.0, "ab Sekunde 2 muss der Ton liegen")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg fehlt")
 class DelayedAudioRenderTest(unittest.TestCase):
-    """R04 (Runde 4): Auch beim Rendern liegt der Ton auf der Zeitachse des Videos, jedes Stück mit genauer Länge."""
+    """Auch beim Rendern liegt der Ton auf der Zeitachse des Videos, jedes Stück mit genauer Länge."""
 
     def test_render_audio_keeps_leading_silence(self):
         from render import build_audio
@@ -237,3 +237,34 @@ class DelayedAudioRenderTest(unittest.TestCase):
             self.assertLess(float(db[1:9].max()), -40.0, "0,5 s Stille vor dem Toneinsatz fehlt")
             self.assertGreater(float(db[12:28].mean()), -30.0)
             self.assertAlmostEqual(len(load_audio(out, 8000)) / 8000, 1.5, delta=0.05)
+
+
+def integrated_lufs(path):
+    res = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-af", "ebur128", "-f", "null", "-"],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return float(res.stderr.rsplit("I:", 1)[1].split("LUFS")[0])
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg fehlt")
+class LoudnessTest(unittest.TestCase):
+    """Leise Aufnahme mit lauten Spitzen (typisch Podcast): der Short erreicht trotzdem −14 LUFS ±1,5."""
+
+    def test_dynamic_recording_reaches_target(self):
+        from render import build_audio
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            audio = tone(8.0, -32)
+            for k in range(8):                       # je Sekunde 40 ms laut (Lachen, Klatschen)
+                i = int((k + 0.5) * SR)
+                audio[i:i + int(0.04 * SR)] = tone(0.04, -4, 440)[:int(0.04 * SR)]
+            with wave.open(str(d / "ton.wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(SR)
+                w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+            out, _ = build_audio({"cut": [[0.0, 8.0]], "air": [[0.4, 0.4]], "speed": 1.0}, str(d / "ton.wav"), d)
+            self.assertAlmostEqual(integrated_lufs(out), -14.0, delta=1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()

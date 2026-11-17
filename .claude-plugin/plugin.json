@@ -1,7 +1,7 @@
 {
   "name": "shortomation",
-  "description": "Macht aus einem langen Video mit Sprache fertige Hochkant-Shorts: findet die stärksten Momente, gibt jedem einen Viralitätswert, schneidet wortgenau, setzt Hook und Untertitel und prüft jeden Short automatisch. Läuft lokal, lädt nichts hoch. MIT.",
-  "version": "2.0.0",
+  "description": "Macht aus einem langen Video mit Sprache fertige Hochkant-Shorts: findet die stärksten Momente, gibt jedem einen Viralitätswert, schneidet wortgenau, folgt bei Podcasts der Person, die spricht, setzt Hook und Untertitel und prüft jeden Short automatisch. Läuft lokal, lädt nichts hoch. MIT.",
+  "version": "2.1.0",
   "author": {
     "name": "memo.baut.ki"
   },
@@ -15,7 +15,9 @@
     "tiktok",
     "video",
     "clips",
-    "untertitel"
+    "untertitel",
+    "podcast",
+    "speaker-tracking"
   ],
   "homepage": "https://github.com/memobautki/shortomation",
   "repository": "https://github.com/memobautki/shortomation"
